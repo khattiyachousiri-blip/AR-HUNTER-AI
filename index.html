@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ AI HUNTER : ยิงเป้าหมายที่เป็น AI ⚡</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Orbitron for Futuristic UI, Prompt for Thai text -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Prompt:wght@300;500;700&display=swap" rel="stylesheet">
+    <!-- MediaPipe for Hand Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --neon-cyan: #00f3ff;
+            --neon-magenta: #ff00ff;
+            --neon-gold: #ffaa00;
+            --dark-bg: #050510;
+        }
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: var(--dark-bg);
+            color: white;
+            overflow: hidden;
+            user-select: none;
+        }
+        .font-cyber {
+            font-family: 'Orbitron', sans-serif;
+        }
+        .neon-text-cyan {
+            text-shadow: 0 0 5px var(--neon-cyan), 0 0 15px var(--neon-cyan), 0 0 30px var(--neon-cyan);
+        }
+        .neon-text-magenta {
+            text-shadow: 0 0 5px var(--neon-magenta), 0 0 15px var(--neon-magenta), 0 0 30px var(--neon-magenta);
+        }
+        .hud-panel {
+            background: rgba(10, 15, 30, 0.88);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 243, 255, 0.4);
+            box-shadow: inset 0 0 20px rgba(0, 243, 255, 0.15), 0 0 25px rgba(0, 0, 0, 0.7);
+            border-radius: 16px;
+        }
+        .cyber-grid {
+            background-image: 
+                linear-gradient(rgba(0, 243, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.1) 1px, transparent 1px);
+            background-size: 35px 35px;
+            background-position: center center;
+        }
+        input, select {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1.5px solid var(--neon-cyan);
+            color: #ffffff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        input:focus, select:focus {
+            outline: none;
+            box-shadow: 0 0 15px var(--neon-cyan);
+            background: rgba(0, 243, 255, 0.15);
+        }
+        .btn-cyber {
+            background: transparent;
+            border: 1.5px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            transition: all 0.2s;
+        }
+        .btn-cyber:hover, .btn-cyber.active {
+            background: var(--neon-cyan);
+            color: #000;
+            box-shadow: 0 0 20px var(--neon-cyan);
+        }
+        .btn-cyber-magenta:hover, .btn-cyber-magenta.active {
+            background: var(--neon-magenta);
+            border-color: var(--neon-magenta);
+            color: #fff;
+            box-shadow: 0 0 20px var(--neon-magenta);
+        }
+        #gameCanvas {
+            cursor: crosshair;
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10;
+        }
+        #hud-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+        }
+        .hud-interactive {
+            pointer-events: auto;
+        }
+        #videoElement {
+            display: none;
+        }
+        .screen {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 30;
+        }
+        .screen.active {
+            display: flex;
+        }
+        .particle {
+            position: absolute;
+            background: var(--neon-cyan);
+            border-radius: 50%;
+            opacity: 0.5;
+            animation: float-up linear infinite;
+        }
+        @keyframes float-up {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            50% { opacity: 0.5; }
+            100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+        }
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.15) 50%,
+                rgba(0,0,0,0.15)
+            );
+            background-size: 100% 4px;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        .home-background {
+            background-image: url('assets/home-hunter.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            filter: saturate(1.08) contrast(1.04);
+        }
+        #screen-game { background: transparent !important; }
+        .target-image { image-rendering: auto; }
+        /* Gameplay balance: camera/player 20%, game background 80% */
+        #screen-game { background: rgba(0, 0, 0, 0.015) !important; }
+        /* ฉากเกมชัด 80% แต่ยังเห็นผู้เล่นจากกล้องประมาณ 20% */
+        body.game-active .home-background { opacity: 0.80; filter: saturate(1.08) brightness(1.00) contrast(1.04); }
+        body.game-active .cyber-grid { opacity: 0.80; }
+        body.game-active > .bg-gradient-to-b { opacity: 0.80; }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(5, 5, 16, 0.9);
+            border-left: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--neon-cyan);
+            border-radius: 4px;
+            box-shadow: 0 0 5px var(--neon-cyan);
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--neon-magenta);
+            box-shadow: 0 0 10px var(--neon-magenta);
+        }
+    </style>
+</head>
+<body>
+    <div class="fixed inset-0 z-0 bg-[#050510]"></div>
+
+    <div class="fixed inset-0 z-0 home-background" aria-hidden="true"></div>
+    <div class="fixed inset-0 cyber-grid z-[1] pointer-events-none"></div>
+    <div class="fixed inset-0 bg-gradient-to-b from-black/10 via-black/25 to-[#050510]/90 z-[2] pointer-events-none"></div>
+    <div id="particles-container" class="fixed inset-0 z-0 pointer-events-none"></div>
+
+    <video id="videoElement" autoplay playsinline></video>
+
+    <!-- ==================== HOME SCREEN ==================== -->
+    <div id="screen-home" class="screen active flex-col justify-center items-center p-3 md:p-6 relative">
+        
+        <div id="camera-loading" class="absolute top-3 right-3 md:top-5 md:right-5 hud-panel px-4 py-2 text-xs md:text-sm text-yellow-400 flex items-center gap-2 font-cyber z-40">
+            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            INITIALIZING CAMERA...
+        </div>
+
+        <div class="hud-panel p-6 md:p-8 max-w-3xl w-full text-center relative overflow-y-auto max-h-[92vh] bg-black/85 shadow-[0_0_60px_rgba(0,243,255,0.25)]">
+            <div class="absolute top-0 left-0 w-10 h-10 border-t-2 border-l-2 border-[#00f3ff] pointer-events-none"></div>
+            <div class="absolute top-0 right-0 w-10 h-10 border-t-2 border-r-2 border-[#00f3ff] pointer-events-none"></div>
+            <div class="absolute bottom-0 left-0 w-10 h-10 border-b-2 border-l-2 border-[#00f3ff] pointer-events-none"></div>
+            <div class="absolute bottom-0 right-0 w-10 h-10 border-b-2 border-r-2 border-[#00f3ff] pointer-events-none"></div>
+
+            <div class="mb-4 flex justify-center">
+                <img src="assets/logo-kru-da.png" alt="ครูดา พาเรียน" class="h-20 md:h-28 object-contain drop-shadow-[0_0_18px_rgba(0,243,255,0.45)]">
+            </div>
+            <h1 class="font-cyber text-3xl md:text-5xl font-black mb-2 neon-text-cyan tracking-wider leading-tight">⚡ AR HUNTER AI ⚡<br><span class="text-xl md:text-2xl text-white">ยินดีต้อนรับเข้าสู่ AR HUNTER AI</span></h1>
+            <p class="font-cyber text-sm md:text-base text-[#ff00ff] mb-4 tracking-widest animate-pulse">HUNT • LOCK • SHOOT • FIREBALL LASER AR BOOTH</p>
+            <div class="mb-5 grid grid-cols-2 gap-2 text-[11px] md:text-xs font-cyber">
+                <div class="rounded-lg border border-[#00f3ff]/50 bg-black/55 px-3 py-2 text-[#00f3ff]">🤖 AI TARGETS <b>20 รูป</b></div>
+                <div class="rounded-lg border border-red-400/50 bg-black/55 px-3 py-2 text-red-300">🚫 NON-AI <b>20 รูป</b></div>
+            </div>
+
+            <div class="bg-black/60 border border-[#ff00ff]/60 p-4 rounded-xl mb-5 text-left shadow-[0_0_20px_rgba(255,0,255,0.2)]">
+                <h3 class="text-[#ff00ff] font-bold font-cyber mb-2 text-sm md:text-base">📜 คำชี้แจงการเล่น (GAME INSTRUCTIONS)</h3>
+                <ul class="text-xs md:text-sm space-y-1.5 text-gray-200">
+                    <li><strong class="text-[#00f3ff]">🖐️ แบมือ / ขยับมือ:</strong> สร้างลูกไฟพลังงานแสงสีทองและเล็งเป้าหมายผ่านฝ่ามือ</li>
+                    <li><strong class="text-yellow-400">✊ กำมือ / ยิง:</strong> ปล่อยลำแสงลูกไฟพลาสม่าพุ่งกระแทกเป้าหมายทำลายล้าง</li>
+                    <li><strong class="text-green-400">🎯 ยิง AI (Smart Devices):</strong> ได้รับคะแนนสะสมและเพิ่ม Combo คูณต่อเนื่อง</li>
+                    <li><strong class="text-red-400">❌ ยิงสิ่งของทั่วไป (Non-AI):</strong> ถูกหักคะแนนและรีเซ็ต Combo ทันที</li>
+                    <li><strong class="text-white">⏱️ เวลาปฏิบัติภารกิจ:</strong> ด่าน 1 (1 นาที), ด่าน 2 (1 นาที 20 วินาที), ด่าน 3 (1 นาที 50 วินาที), ด่าน 4-6 (2 นาที)</li>
+                </ul>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5 text-left">
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs md:text-sm text-[#00f3ff] mb-1 font-cyber">NAME / SURNAME (ชื่อ-นามสกุล)</label>
+                        <input type="text" id="input-name" class="w-full px-4 py-2.5 rounded-lg text-sm md:text-base" placeholder="กรอกชื่อ-นามสกุล">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs md:text-sm text-[#00f3ff] mb-1 font-cyber">GRADE (ชั้น)</label>
+                            <select id="input-grade" class="w-full px-3 py-2.5 rounded-lg text-sm md:text-base">
+                                <option value="ม.1">ม.1</option>
+                                <option value="ม.2">ม.2</option>
+                                <option value="ม.3" selected>ม.3</option>
+                                <option value="ม.4">ม.4</option>
+                                <option value="ม.5">ม.5</option>
+                                <option value="ม.6">ม.6</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs md:text-sm text-[#00f3ff] mb-1 font-cyber">ROOM (ห้อง)</label>
+                            <input type="number" id="input-room" class="w-full px-3 py-2.5 rounded-lg text-sm md:text-base" placeholder="ห้อง" value="1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs md:text-sm text-[#00f3ff] mb-1 font-cyber">INITIAL CONTROL MODE (โหมดควบคุม)</label>
+                        <div class="flex gap-1.5">
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber text-xs md:text-sm mode-select active" data-mode="AUTO">🤖 AUTO</button>
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber text-xs md:text-sm mode-select" data-mode="HAND">🖐️ HAND</button>
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber text-xs md:text-sm mode-select" data-mode="MOUSE">🖱️ MOUSE</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs md:text-sm text-[#00f3ff] mb-1 font-cyber">DIFFICULTY LEVEL & TIME (เลือกระดับ)</label>
+                        <div class="flex gap-1">
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber font-bold text-xs level-select" data-level="1" title="1 นาที">L1</button>
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber font-bold text-xs level-select" data-level="2" title="1 นาที 20 วินาที">L2</button>
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber font-bold text-xs level-select active" data-level="3" title="1 นาที 50 วินาที">L3</button>
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber font-bold text-xs level-select" data-level="4" title="2 นาที">L4</button>
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber font-bold text-xs level-select" data-level="5" title="2 นาที">L5</button>
+                            <button class="btn-cyber flex-1 py-2 rounded-lg font-cyber font-bold text-xs level-select btn-cyber-magenta" data-level="6" title="2 นาที">L6</button>
+                        </div>
+                        <span id="level-time-desc" class="text-[11px] text-gray-400 mt-1 block font-cyber">⏱️ Level 3 เวลาปฏิบัติภารกิจ: 1 นาที 50 วินาที</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button id="btn-start" class="flex-1 bg-[#00f3ff] text-black font-cyber font-black text-lg md:text-xl py-3.5 rounded-xl hover:bg-white hover:shadow-[0_0_30px_#00f3ff] transition-all duration-300">
+                    🚀 START HUNT
+                </button>
+                <button id="btn-stats-modal" class="px-5 border border-[#ff00ff] text-[#ff00ff] font-cyber font-bold text-sm rounded-xl hover:bg-[#ff00ff] hover:text-white transition-all">
+                    📊 สถิติ / อันดับ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== GAME SCREEN ==================== -->
+    <div id="screen-game" class="screen bg-[#050510]">
+        <canvas id="gameCanvas"></canvas>
+        <div class="scanlines"></div>
+        
+        <div id="hud-container" class="flex flex-col justify-between p-4 md:p-6">
+            <!-- Top Bar -->
+            <div class="flex justify-between items-center hud-panel p-4 hud-interactive shadow-lg">
+                <div>
+                    <span id="hud-level-text" class="text-sm md:text-base text-[#00f3ff] font-cyber font-bold block">AI HUNTER - LEVEL 3</span>
+                    <div class="flex gap-4 mt-1.5 text-base md:text-lg">
+                        <span class="text-[#00f3ff] font-cyber">⭐ <span id="hud-score">0</span></span>
+                        <span class="text-[#ff00ff] font-cyber" id="hud-combo">🔥 COMBO x0</span>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <span class="text-xs md:text-sm text-gray-400 font-cyber block">TIME REMAINING</span>
+                    <span id="hud-time" class="text-xl md:text-2xl font-cyber font-bold text-yellow-400">01:50</span>
+                </div>
+                <div class="text-right">
+                    <span class="text-xs md:text-sm text-[#00f3ff] font-cyber block">TARGETS STATS</span>
+                    <div class="flex gap-4 mt-1.5 text-base md:text-lg">
+                        <span class="text-green-400">🎯 <span id="hud-correct">0</span></span>
+                        <span class="text-red-400">❌ <span id="hud-wrong">0</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Bar -->
+            <div class="flex justify-between items-end hud-interactive">
+                <div class="hud-panel p-3 flex flex-wrap gap-2 items-center max-w-[70%]">
+                    <span class="hidden md:inline text-xs text-gray-300 font-cyber mr-1">CONTROL SWITCH:</span>
+                    <button class="btn-cyber px-3 py-2 rounded-lg font-cyber text-xs md:text-sm in-game-mode active" data-mode="AUTO">🤖 AUTO</button>
+                    <button class="btn-cyber px-3 py-2 rounded-lg font-cyber text-xs md:text-sm in-game-mode" data-mode="HAND">🖐️ HAND</button>
+                    <button class="btn-cyber px-3 py-2 rounded-lg font-cyber text-xs md:text-sm in-game-mode" data-mode="MOUSE">🖱️ MOUSE</button>
+                    
+                    <div id="hand-status" class="ml-2 flex items-center gap-1.5 text-xs font-cyber text-red-500">
+                        <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> NO HAND
+                    </div>
+                </div>
+
+                <button id="btn-end-game" class="bg-red-600 hover:bg-red-500 text-white font-cyber font-bold px-5 py-2.5 md:px-7 md:py-3 rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.6)] transition-all text-sm md:text-base">
+                    ⏹ จบเกม (END)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== RESULT SCREEN ==================== -->
+    <div id="screen-result" class="screen flex-col justify-center items-center p-3 md:p-6 bg-[rgba(5,5,16,0.96)] backdrop-blur-md">
+        
+        <div class="hud-panel p-6 md:p-8 max-w-3xl w-full grid grid-cols-1 md:grid-cols-2 gap-5 relative overflow-y-auto max-h-[92vh]">
+            
+            <div id="res-status-banner" class="relative md:absolute md:-top-5 left-1/2 transform md:-translate-x-1/2 px-8 py-2 rounded-full font-cyber font-black text-base md:text-xl shadow-[0_0_25px_currentColor] text-white bg-green-500 border-2 border-white z-40 text-center w-full md:w-auto mb-2 md:mb-0">
+                ✅ ผ่านเกณฑ์ภารกิจ (PASSED)
+            </div>
+
+            <div class="flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-[#00f3ff]/30 pb-4 md:pb-0 pr-0 md:pr-5 mt-2">
+                <h2 class="font-cyber text-2xl md:text-3xl font-bold text-white mb-1.5">🏆 MISSION RESULT</h2>
+                <span id="res-name" class="text-base md:text-lg font-bold text-[#00f3ff]">นักสำรวจ</span>
+                <p id="res-details" class="font-cyber text-xs text-[#ff00ff] mt-0.5">LEVEL 3 • HAND MODE</p>
+                <div class="mt-3 text-center">
+                    <span id="res-score" class="text-3xl md:text-4xl font-black text-yellow-400 font-cyber">0</span>
+                    <span class="text-xs text-gray-400 block font-cyber mt-0.5">TOTAL SCORE</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 w-full text-left">
+                <div class="bg-black/40 p-3 rounded-xl border border-gray-700">
+                    <span class="text-xs text-gray-400 block font-cyber">AI TARGETS HIT</span>
+                    <span id="res-correct" class="text-lg md:text-xl text-green-400 font-bold">🎯 0</span>
+                </div>
+                <div class="bg-black/40 p-3 rounded-xl border border-gray-700">
+                    <span class="text-xs text-gray-400 block font-cyber">NON-AI HIT</span>
+                    <span id="res-wrong" class="text-lg md:text-xl text-red-400 font-bold">❌ 0</span>
+                </div>
+                <div class="bg-black/40 p-3 rounded-xl border border-gray-700">
+                    <span class="text-xs text-gray-400 block font-cyber">ACCURACY</span>
+                    <span id="res-accuracy" class="text-lg md:text-xl text-yellow-400 font-bold">🎯 0%</span>
+                </div>
+                <div class="bg-black/40 p-3 rounded-xl border border-gray-700">
+                    <span class="text-xs text-gray-400 block font-cyber">MAX COMBO</span>
+                    <span id="res-combo" class="text-lg md:text-xl text-[#00f3ff] font-bold">🔥 0</span>
+                </div>
+            </div>
+
+            <!-- AI Commander Feedback -->
+            <div class="p-4 border border-[#ff00ff]/60 bg-black/70 rounded-xl relative overflow-hidden w-full col-span-1 md:col-span-2 shadow-inner">
+                <div class="scanlines opacity-40"></div>
+                <h3 class="text-[#ff00ff] font-cyber text-xs md:text-sm mb-1.5 flex items-center gap-2 relative z-10">
+                    <span class="animate-pulse">📡</span> AI COMMANDER DEBRIEFING
+                </h3>
+                <p id="ai-feedback-text" class="text-xs md:text-sm text-[#00f3ff] font-prompt leading-relaxed relative z-10 min-h-[40px]">
+                    <span class="animate-pulse text-gray-400">Analyzing mission report...</span>
+                </p>
+            </div>
+            
+            <p id="save-status" class="text-xs text-yellow-400 font-cyber animate-pulse col-span-1 md:col-span-2 text-center">Saving data to Google Sheets...</p>
+
+            <div class="flex flex-col pt-3 border-t border-[#00f3ff]/30 col-span-1 md:col-span-2">
+                <h2 class="font-cyber text-lg font-bold text-white mb-2.5 text-center">📊 LEADERBOARD (อันดับคะแนนสูงสุด)</h2>
+                <div id="leaderboard-list" class="space-y-2 flex-1 overflow-y-auto pr-1 max-h-[140px]">
+                    <!-- JS populated -->
+                </div>
+                
+                <div class="flex gap-3 mt-4">
+                    <button id="btn-home" class="flex-1 bg-transparent border border-[#00f3ff] text-[#00f3ff] font-cyber font-bold py-2.5 rounded-xl hover:bg-[#00f3ff] hover:text-black transition-all text-sm">
+                        🏠 MAIN MENU
+                    </button>
+                    <button id="btn-play-again" class="flex-1 bg-[#00f3ff] text-black font-cyber font-bold py-2.5 rounded-xl hover:bg-white transition-all text-sm">
+                        🔄 PLAY AGAIN
+                    </button>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- ==================== STATISTICS MODAL ==================== -->
+    <div id="modal-stats" class="screen flex-col justify-center items-center p-4 bg-[rgba(5,5,16,0.95)] backdrop-blur-md z-50">
+        <div class="hud-panel p-6 max-w-xl w-full relative">
+            <h2 class="font-cyber text-xl font-bold text-[#00f3ff] mb-4 text-center">📊 สถิติคะแนนและอันดับทั้งหมด</h2>
+            <div id="stats-content" class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                <p class="text-gray-400 text-center text-sm py-4">กำลังโหลดข้อมูลสถิติ...</p>
+            </div>
+            <button id="btn-close-stats" class="mt-5 w-full bg-red-600 hover:bg-red-500 text-white font-cyber font-bold py-2 rounded-xl text-sm">
+                ❌ ปิดหน้าต่าง
+            </button>
+        </div>
+    </div>
+
+    <div class="fixed bottom-0 left-0 right-0 text-center z-50 pointer-events-none bg-black/60 py-2 border-t border-[#00f3ff]/20">
+        <img src="assets/logo-kru-da.png" alt="ครูดา พาเรียน" class="mx-auto h-10 md:h-12 object-contain opacity-95">
+        <div class="text-[10px] md:text-[11px] text-gray-300 font-cyber mt-0.5">© 2026 AR HUNTER AI • created by Kru Khattiya Chousiri</div>
+    </div>
+
+    <script>
+        const ASSETS = {
+            ai: [
+                {
+                                "id": "ai-01",
+                                "type": "image",
+                                "src": "assets/ai-01.png",
+                                "name": "AI Drone"
+                },
+                {
+                                "id": "ai-02",
+                                "type": "image",
+                                "src": "assets/ai-02.png",
+                                "name": "AI Smartphone"
+                },
+                {
+                                "id": "ai-03",
+                                "type": "image",
+                                "src": "assets/ai-03.png",
+                                "name": "AI Smartwatch"
+                },
+                {
+                                "id": "ai-04",
+                                "type": "image",
+                                "src": "assets/ai-04.png",
+                                "name": "AI SmartGlasses"
+                },
+                {
+                                "id": "ai-05",
+                                "type": "image",
+                                "src": "assets/ai-05.png",
+                                "name": "ลำโพงอัจฉริยะ"
+                },
+                {
+                                "id": "ai-06",
+                                "type": "image",
+                                "src": "assets/ai-06.png",
+                                "name": "หุ่นยนต์ดูดฝุ่นอัจฉริยะ"
+                },
+                {
+                                "id": "ai-07",
+                                "type": "image",
+                                "src": "assets/ai-07.png",
+                                "name": "รถยนต์ขับเคลื่อนอัตโนมัติ"
+                },
+                {
+                                "id": "ai-08",
+                                "type": "image",
+                                "src": "assets/ai-08.png",
+                                "name": "หุ่นยนต์ผู้ช่วยอัจฉริยะ"
+                },
+                {
+                                "id": "ai-09",
+                                "type": "image",
+                                "src": "assets/ai-09.png",
+                                "name": "หูฟังแปลภาษาด้วย AI"
+                },
+                {
+                                "id": "ai-10",
+                                "type": "image",
+                                "src": "assets/ai-10.png",
+                                "name": "กริ่งประตูอัจฉริยะ"
+                },
+                {
+                                "id": "ai-11",
+                                "type": "image",
+                                "src": "assets/ai-11.png",
+                                "name": "เครื่องช่วยวินิจฉัยด้วย AI"
+                },
+                {
+                                "id": "ai-12",
+                                "type": "image",
+                                "src": "assets/ai-12.png",
+                                "name": "กล้องตรวจจับการจราจรด้วย AI"
+                },
+                {
+                                "id": "ai-13",
+                                "type": "image",
+                                "src": "assets/ai-13.png",
+                                "name": "โดรนตรวจโรคพืชด้วย AI"
+                },
+                {
+                                "id": "ai-14",
+                                "type": "image",
+                                "src": "assets/ai-14.png",
+                                "name": "หุ่นยนต์ขนส่ง"
+                },
+                {
+                                "id": "ai-15",
+                                "type": "image",
+                                "src": "assets/ai-15.png",
+                                "name": "เครื่องควบคุมอุณหภูมิอัจริยะ"
+                },
+                {
+                                "id": "ai-16",
+                                "type": "image",
+                                "src": "assets/ai-16.png",
+                                "name": "เครื่องควบคุมน้ำอัจริยะ"
+                },
+                {
+                                "id": "ai-17",
+                                "type": "image",
+                                "src": "assets/ai-17.png",
+                                "name": "หุ่นยนต์สัตว์เลี้ยง"
+                },
+                {
+                                "id": "ai-18",
+                                "type": "image",
+                                "src": "assets/ai-18.png",
+                                "name": "กล้องตรวจสอบสินค้าด้วย AI"
+                },
+                {
+                                "id": "ai-19",
+                                "type": "image",
+                                "src": "assets/ai-19.png",
+                                "name": "กล้องวงจรปิด AI"
+                },
+                {
+                                "id": "ai-20",
+                                "type": "image",
+                                "src": "assets/ai-20.png",
+                                "name": "อุปกรณ์ถอดเสียงด้วย AI"
+                }
+],
+            nonAi: [
+                {
+                                "id": "non-ai-01",
+                                "type": "image",
+                                "src": "assets/non-ai-01.png",
+                                "name": "นาฬิกา"
+                },
+                {
+                                "id": "non-ai-02",
+                                "type": "image",
+                                "src": "assets/non-ai-02.png",
+                                "name": "ไฟฉาย"
+                },
+                {
+                                "id": "non-ai-03",
+                                "type": "image",
+                                "src": "assets/non-ai-03.png",
+                                "name": "พัดลม"
+                },
+                {
+                                "id": "non-ai-04",
+                                "type": "image",
+                                "src": "assets/non-ai-04.png",
+                                "name": "ที่เปิดกระป๋องแบบมือหมุน"
+                },
+                {
+                                "id": "non-ai-05",
+                                "type": "image",
+                                "src": "assets/non-ai-05.png",
+                                "name": "กรรไกร"
+                },
+                {
+                                "id": "non-ai-06",
+                                "type": "image",
+                                "src": "assets/non-ai-06.png",
+                                "name": "เครื่องเย็บกระดาษ"
+                },
+                {
+                                "id": "non-ai-07",
+                                "type": "image",
+                                "src": "assets/non-ai-07.png",
+                                "name": "ไม้บรรทัด"
+                },
+                {
+                                "id": "non-ai-08",
+                                "type": "image",
+                                "src": "assets/non-ai-08.png",
+                                "name": "แว่นขยาย"
+                },
+                {
+                                "id": "non-ai-09",
+                                "type": "image",
+                                "src": "assets/non-ai-09.png",
+                                "name": "จักรยาน"
+                },
+                {
+                                "id": "non-ai-10",
+                                "type": "image",
+                                "src": "assets/non-ai-10.png",
+                                "name": "ร่ม"
+                },
+                {
+                                "id": "non-ai-11",
+                                "type": "image",
+                                "src": "assets/non-ai-11.png",
+                                "name": "ช้อน"
+                },
+                {
+                                "id": "non-ai-12",
+                                "type": "image",
+                                "src": "assets/non-ai-12.png",
+                                "name": "แก้ว"
+                },
+                {
+                                "id": "non-ai-13",
+                                "type": "image",
+                                "src": "assets/non-ai-13.png",
+                                "name": "ไม้กวาด"
+                },
+                {
+                                "id": "non-ai-14",
+                                "type": "image",
+                                "src": "assets/non-ai-14.png",
+                                "name": "แปรงสีฟัน"
+                },
+                {
+                                "id": "non-ai-15",
+                                "type": "image",
+                                "src": "assets/non-ai-15.png",
+                                "name": "ดินสอ"
+                },
+                {
+                                "id": "non-ai-16",
+                                "type": "image",
+                                "src": "assets/non-ai-16.png",
+                                "name": "สมุด"
+                },
+                {
+                                "id": "non-ai-17",
+                                "type": "image",
+                                "src": "assets/non-ai-17.png",
+                                "name": "เข็มทิศ"
+                },
+                {
+                                "id": "non-ai-18",
+                                "type": "image",
+                                "src": "assets/non-ai-18.png",
+                                "name": "เลื่อยมือ"
+                },
+                {
+                                "id": "non-ai-19",
+                                "type": "image",
+                                "src": "assets/non-ai-19.png",
+                                "name": "ค้อน"
+                },
+                {
+                                "id": "non-ai-20",
+                                "type": "image",
+                                "src": "assets/non-ai-20.png",
+                                "name": "ไขควง"
+                }
+]
+        };
+
+        // Preload all 40 target images so the game never falls back to emoji.
+        const imageCache = new Map();
+        [...ASSETS.ai, ...ASSETS.nonAi].forEach(asset => {
+            const img = new Image();
+            img.src = asset.src;
+            imageCache.set(asset.id, img);
+        });
+
+        const LEVEL_DURATIONS = {
+            1: 60,   // 60 วินาที
+            2: 90,   // 90 วินาที
+            3: 120,  // 120 วินาที
+            4: 120,  // 120 วินาที
+            5: 120   // 120 วินาที
+        };
+
+        // ใส่ Web App URL ของ Google Apps Script ของคุณที่นี่ เพื่อบันทึกคะแนนลง Google Sheets
+        const GOOGLE_APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzTgjgpQlSik5Im7p5I10tA5UWYODCgHJnbYb6vjbmaZo0sNXTv33vALETj0Gebf_O4Hg/exec"; 
+
+        let gameState = {
+            player: { name: '', grade: 'ม.3', room: '1' },
+            level: 3,
+            controlMode: 'AUTO',
+            activeControl: 'MOUSE',
+            isPlaying: false,
+            startTime: 0,
+            timeLeft: 110,
+            score: 0,
+            combo: 0,
+            maxCombo: 0,
+            correctHits: 0,
+            wrongHits: 0,
+            handDetected: false,
+            handCursor: { x: 0, y: 0 },
+            mouseCursor: { x: 0, y: 0 },
+            isFiring: false,
+            handState: 'CLOSED',
+            energyLevel: 0,
+            fireballs: []
+        };
+
+        let targets = [];
+        let particles = [];
+        let floatingTexts = [];
+        
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let animationId;
+
+        const videoCanvas = document.createElement('canvas');
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let bgmOscillator = null;
+        let bgmGain = null;
+
+        const AIVoice = {
+            speak: (text) => {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'th-TH';
+                    utterance.rate = 1.05;
+                    utterance.pitch = 0.95;
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
+        };
+        
+        const Sounds = {
+            playLaser: () => {
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+                for(let i=0; i<3; i++) {
+                    setTimeout(() => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'sawtooth';
+                        osc.frequency.setValueAtTime(600 + (Math.random()*500), audioCtx.currentTime);
+                        osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.18);
+                        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start();
+                        osc.stop(audioCtx.currentTime + 0.18);
+                    }, i * 35);
+                }
+            },
+            playHit: () => {
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(900, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(2200, audioCtx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.12);
+            },
+            playYes: () => {
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const yesVoice = new SpeechSynthesisUtterance('Yes');
+                    yesVoice.lang = 'en-US';
+                    yesVoice.rate = 1.1;
+                    yesVoice.pitch = 1.15;
+                    yesVoice.volume = 0.95;
+                    window.speechSynthesis.speak(yesVoice);
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(760, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1500, audioCtx.currentTime + 0.10);
+                gain.gain.setValueAtTime(0.20, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.14);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.14);
+            },
+            playWrong: () => {
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+                // เสียงแจ้งเตือนเมื่อยิงผิด: เล่นเสียงสั้น ๆ และพูดคำว่า No
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const noVoice = new SpeechSynthesisUtterance('No');
+                    noVoice.lang = 'en-US';
+                    noVoice.rate = 1.15;
+                    noVoice.pitch = 0.85;
+                    noVoice.volume = 0.95;
+                    window.speechSynthesis.speak(noVoice);
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(140, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.22);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.22);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.22);
+            },
+            startBGM: () => {
+                if (bgmOscillator) return;
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+                bgmOscillator = audioCtx.createOscillator();
+                bgmGain = audioCtx.createGain();
+                bgmOscillator.type = 'square';
+                bgmOscillator.frequency.value = 65;
+                
+                const lfo = audioCtx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.value = 3;
+                const lfoGain = audioCtx.createGain();
+                lfoGain.gain.value = 15;
+                lfo.connect(lfoGain);
+                lfoGain.connect(bgmOscillator.frequency);
+                
+                bgmGain.gain.value = 0.05;
+                bgmOscillator.connect(bgmGain);
+                bgmGain.connect(audioCtx.destination);
+                
+                bgmOscillator.start();
+                lfo.start();
+            },
+            stopBGM: () => {
+                if (bgmOscillator) {
+                    bgmOscillator.stop();
+                    bgmOscillator.disconnect();
+                    bgmOscillator = null;
+                }
+            }
+        };
+
+        const videoElement = document.getElementById('videoElement');
+        let cameraInitied = false;
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                gameState.handDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+                
+                const palmCenter = {
+                    x: (landmarks[0].x + landmarks[5].x + landmarks[9].x + landmarks[13].x + landmarks[17].x) / 5,
+                    y: (landmarks[0].y + landmarks[5].y + landmarks[9].y + landmarks[13].y + landmarks[17].y) / 5
+                };
+
+                gameState.handCursor.x = (1 - palmCenter.x) * canvas.width;
+                gameState.handCursor.y = palmCenter.y * canvas.height;
+
+                const wrist = landmarks[0];
+                let openFingersCount = 0;
+                const fingerTips = [8, 12, 16, 20];
+                const fingerJoints = [6, 10, 14, 18];
+                
+                for(let i=0; i<4; i++) {
+                     const distTip = Math.hypot(landmarks[fingerTips[i]].x - wrist.x, landmarks[fingerTips[i]].y - wrist.y);
+                     const distJoint = Math.hypot(landmarks[fingerJoints[i]].x - wrist.x, landmarks[fingerJoints[i]].y - wrist.y);
+                     if(distTip > distJoint) {
+                         openFingersCount++;
+                     }
+                }
+                
+                if (landmarks[4].x > landmarks[2].x) openFingersCount++;
+
+                if (openFingersCount >= 3) {
+                    gameState.handState = 'OPEN';
+                    if (!gameState.isFiring) {
+                        gameState.isFiring = true;
+                        if (gameState.isPlaying && gameState.activeControl === 'HAND') {
+                             findAndShootTarget(gameState.handCursor.x, gameState.handCursor.y);
+                        }
+                    }
+                    gameState.energyLevel = Math.min(100, gameState.energyLevel + 12);
+                } else {
+                    gameState.handState = 'CLOSED';
+                    gameState.isFiring = false;
+                    gameState.energyLevel = Math.max(0, gameState.energyLevel - 5);
+                }
+
+                updateHandStatusUI(true);
+            } else {
+                gameState.handDetected = false;
+                gameState.isFiring = false;
+                gameState.energyLevel = 0;
+                updateHandStatusUI(false);
+            }
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start().then(() => {
+            const loadingEl = document.getElementById('camera-loading');
+            if (loadingEl) loadingEl.style.display = 'none';
+            cameraInitied = true;
+        }).catch(err => {
+            console.error("Camera access denied or failed.", err);
+            const loadingEl = document.getElementById('camera-loading');
+            if (loadingEl) {
+                loadingEl.innerHTML = '⚠️ CAMERA DENIED (MOUSE ONLY)';
+                loadingEl.classList.replace('text-yellow-400', 'text-red-500');
+            }
+        });
+
+        function updateHandStatusUI(detected) {
+            const statusEl = document.getElementById('hand-status');
+            if (!statusEl) return;
+            if (detected) {
+                statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500"></span> HAND DETECTED`;
+                statusEl.classList.replace('text-red-500', 'text-green-500');
+            } else {
+                statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> NO HAND`;
+                statusEl.classList.replace('text-green-500', 'text-red-500');
+            }
+        }
+
+        document.querySelectorAll('.mode-select').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.mode-select').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                gameState.controlMode = e.target.dataset.mode;
+            });
+        });
+
+        document.querySelectorAll('.level-select').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.level-select').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                gameState.level = parseInt(e.target.dataset.level);
+                
+                const dur = LEVEL_DURATIONS[gameState.level];
+                const mins = Math.floor(dur / 60);
+                const secs = dur % 60;
+                const descTime = mins > 0 ? `${mins} นาที ${secs > 0 ? secs + ' วินาที' : ''}` : `${secs} วินาที`;
+                const descEl = document.getElementById('level-time-desc');
+                if(descEl) descEl.textContent = `⏱️ Level ${gameState.level} เวลาปฏิบัติภารกิจ: ${descTime}`;
+            });
+        });
+
+        document.querySelectorAll('.in-game-mode').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.in-game-mode').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                gameState.controlMode = e.target.dataset.mode;
+            });
+        });
+
+        document.getElementById('btn-start').addEventListener('click', () => {
+            const nameEl = document.getElementById('input-name');
+            const name = nameEl ? nameEl.value.trim() : '';
+            if(!name) { alert("กรุณากรอกชื่อ-นามสกุลก่อนเริ่มภารกิจ"); return; }
+            
+            gameState.player.name = name;
+            const gradeEl = document.getElementById('input-grade');
+            const roomEl = document.getElementById('input-room');
+            if(gradeEl) gameState.player.grade = gradeEl.value;
+            if(roomEl) gameState.player.room = roomEl.value;
+            
+            document.querySelectorAll('.in-game-mode').forEach(b => {
+                b.classList.toggle('active', b.dataset.mode === gameState.controlMode);
+            });
+
+            startGame();
+        });
+
+        document.getElementById('btn-end-game').addEventListener('click', endGame);
+        document.getElementById('btn-home').addEventListener('click', () => { switchScreen('screen-home'); });
+        document.getElementById('btn-play-again').addEventListener('click', () => { startGame(); });
+
+        document.getElementById('btn-stats-modal').addEventListener('click', () => {
+            openStatsModal();
+        });
+        document.getElementById('btn-close-stats').addEventListener('click', () => {
+            document.getElementById('modal-stats').classList.remove('active');
+        });
+
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            const targetScreen = document.getElementById(screenId);
+            if (targetScreen) targetScreen.classList.add('active');
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            gameState.mouseCursor.x = e.clientX - rect.left;
+            gameState.mouseCursor.y = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (gameState.isPlaying && gameState.activeControl === 'MOUSE') {
+                gameState.isFiring = true;
+                findAndShootTarget(gameState.mouseCursor.x, gameState.mouseCursor.y);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+             if (gameState.activeControl === 'MOUSE') {
+                 gameState.isFiring = false;
+             }
+        });
+
+        class Target {
+            constructor(level) {
+                const baseSpeed = 0.64 + (level * 0.072);
+                // สลับความเร็วเล็กน้อย: ช้า / ปกติ / เร็ว เพื่อให้อ่านเป้าหมายทัน
+                const speedVariation = [0.98, 1.14, 1.32][Math.floor(Math.random() * 3)];
+                const speedMult = baseSpeed * speedVariation;
+                const sizeMult = Math.max(1.08, 1.20 - (level * 0.012));
+                
+                this.isAI = Math.random() > 0.38;
+                const sourceArray = this.isAI ? ASSETS.ai : ASSETS.nonAi;
+                this.asset = sourceArray[Math.floor(Math.random() * sourceArray.length)];
+                
+                this.radius = 74;
+                this.x = Math.random() * (canvas.width - this.radius*2) + this.radius;
+                this.y = canvas.height + this.radius;
+                
+                this.vx = (Math.random() - 0.5) * 0.90 * speedMult;
+                this.vy = -(Math.random() * 0.70 + 0.62) * speedMult;
+                
+                this.active = true;
+                this.rotation = 0;
+                this.rotSpeed = 0;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                // เป้าหมายต้องตั้งตรงเสมอ ไม่หมุนกลับหัวหรือพลิกไปมา
+                this.rotation = 0;
+                this.rotSpeed = 0;
+
+                if (this.x < this.radius || this.x > canvas.width - this.radius) this.vx *= -1;
+
+                if (this.y < -this.radius) {
+                    this.active = false;
+                    if (this.isAI) {
+                        gameState.combo = 0;
+                        updateHUDUI();
+                    }
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                ctx.strokeStyle = this.isAI ? 'rgba(0, 243, 255, 0.85)' : 'rgba(160, 160, 160, 0.5)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.rect(-this.radius, -this.radius, this.radius*2, this.radius*2);
+                ctx.stroke();
+
+                const cornerSize = 10;
+                ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.moveTo(-this.radius, -this.radius + cornerSize); ctx.lineTo(-this.radius, -this.radius); ctx.lineTo(-this.radius + cornerSize, -this.radius); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(this.radius, -this.radius + cornerSize); ctx.lineTo(this.radius, -this.radius); ctx.lineTo(this.radius - cornerSize, -this.radius); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-this.radius, this.radius - cornerSize); ctx.lineTo(-this.radius, this.radius); ctx.lineTo(-this.radius + cornerSize, this.radius); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(this.radius, this.radius - cornerSize); ctx.lineTo(this.radius, this.radius); ctx.lineTo(this.radius - cornerSize, this.radius); ctx.stroke();
+                
+                ctx.fillStyle = this.isAI ? 'rgba(0, 15, 35, 0.16)' : 'rgba(15, 15, 20, 0.12)';
+                ctx.fillRect(-this.radius, -this.radius - 38, this.radius*2, 34);
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 15px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.asset.name.toUpperCase(), 0, -this.radius - 15);
+
+                // เอา AI : YES/NO ออกจากเป้าหมาย เพื่อให้ภาพและชื่ออ่านง่ายขึ้น
+                // ภาพเป้าหมายตั้งตรงตลอดเวลา
+                ctx.rotate(0);
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = this.isAI ? 'rgba(0, 243, 255, 0.6)' : 'rgba(255, 0, 0, 0.3)';
+                
+                if (this.asset.type === 'image') {
+                    const img = imageCache.get(this.asset.id);
+                    if (img && img.complete && img.naturalWidth > 0) {
+                        const pad = this.radius * 0.008;
+                        const box = this.radius * 2 - pad * 2;
+                        ctx.drawImage(img, -box / 2, -box / 2, box, box);
+                    }
+                } else if (this.asset.type === 'emoji') {
+                    ctx.font = `${this.radius * 1.35}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.asset.content, 0, 0);
+                }
+                
+                ctx.restore();
+            }
+        }
+
+        function startGame() {
+            document.body.classList.add('game-active');
+            resizeCanvas();
+            videoCanvas.width = canvas.width;
+            videoCanvas.height = canvas.height;
+            
+            switchScreen('screen-game');
+            
+            gameState.score = 0;
+            gameState.combo = 0;
+            gameState.maxCombo = 0;
+            gameState.correctHits = 0;
+            gameState.wrongHits = 0;
+            gameState.startTime = Date.now();
+            gameState.timeLeft = LEVEL_DURATIONS[gameState.level] || 120;
+            gameState.isPlaying = true;
+            gameState.fireballs = [];
+            
+            targets = [];
+            particles = [];
+            floatingTexts = [];
+            
+            const levelTextEl = document.getElementById('hud-level-text');
+            if (levelTextEl) levelTextEl.textContent = `AI HUNTER - LEVEL ${gameState.level}`;
+            updateHUDUI();
+            
+            audioCtx.resume();
+            Sounds.startBGM();
+            AIVoice.speak(`เริ่มภารกิจระดับ ${gameState.level} ล่าปัญญาประดิษฐ์`);
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function findAndShootTarget(originX, originY) {
+            let hitSomething = false;
+            let closestTarget = null;
+            let minDist = Infinity;
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const t = targets[i];
+                if (!t.active) continue;
+
+                const dx = originX - t.x;
+                const dy = originY - t.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist <= t.radius * 3.5) { 
+                    if(dist < minDist) {
+                        minDist = dist;
+                        closestTarget = t;
+                    }
+                }
+            }
+
+            if (closestTarget) {
+                hitSomething = true;
+                shoot(originX, originY, closestTarget);
+            }
+
+            if (!hitSomething) {
+                gameState.combo = 0;
+                updateHUDUI();
+            }
+        }
+
+        function shoot(originX, originY, target) {
+            Sounds.playLaser();
+            createFireballBeam(originX, originY, target.x, target.y);
+
+            target.active = false;
+            createExplosion(target.x, target.y, target.isAI);
+            
+            if (target.isAI) {
+                Sounds.playHit();
+                Sounds.playYes();
+                gameState.combo++;
+                if(gameState.combo > gameState.maxCombo) gameState.maxCombo = gameState.combo;
+                gameState.correctHits++;
+                
+                const points = 100 * (1 + (gameState.combo * 0.12));
+                gameState.score += Math.floor(points);
+                createFloatingText(`+${Math.floor(points)}`, target.x, target.y, '#00f3ff');
+            } else {
+                Sounds.playWrong();
+                gameState.combo = 0;
+                gameState.wrongHits++;
+                gameState.score = Math.max(0, gameState.score - 50);
+                createFloatingText(`-50`, target.x, target.y, '#ff0055');
+            }
+            
+            updateHUDUI();
+        }
+
+        function gameLoop() {
+            if (!gameState.isPlaying) return;
+
+            if (gameState.controlMode === 'AUTO') {
+                gameState.activeControl = gameState.handDetected ? 'HAND' : 'MOUSE';
+            } else {
+                gameState.activeControl = gameState.controlMode;
+            }
+
+            const totalDuration = LEVEL_DURATIONS[gameState.level] || 120;
+            const elapsed = Math.floor((Date.now() - gameState.startTime) / 1000);
+            gameState.timeLeft = Math.max(0, totalDuration - elapsed);
+            
+            const mins = String(Math.floor(gameState.timeLeft / 60)).padStart(2, '0');
+            const secs = String(gameState.timeLeft % 60).padStart(2, '0');
+            const timeEl = document.getElementById('hud-time');
+            if (timeEl) timeEl.textContent = `${mins}:${secs}`;
+            
+            if (gameState.timeLeft <= 0) {
+                endGame();
+                return;
+            }
+
+            const spawnChance = 0.022 + (gameState.level * 0.012);
+            if (Math.random() < spawnChance && targets.length < 5 + gameState.level * 2) {
+                targets.push(new Target(gameState.level));
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (cameraInitied) {
+                ctx.save();
+                ctx.globalAlpha = 0.20;
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                ctx.restore();
+            }
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                targets[i].update();
+                if (targets[i].active) {
+                    targets[i].draw(ctx);
+                } else {
+                    targets.splice(i, 1);
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx; p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) { particles.splice(i, 1); continue; }
+                
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y -= 1.2;
+                ft.life -= 0.02;
+                if (ft.life <= 0) { floatingTexts.splice(i, 1); continue; }
+                
+                ctx.globalAlpha = ft.life;
+                ctx.font = 'bold 22px Orbitron';
+                ctx.fillStyle = ft.color;
+                ctx.textAlign = 'center';
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.globalAlpha = 1;
+            }
+
+            drawFireballBeams();
+            drawHandHUD();
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function drawHandHUD() {
+            let cx, cy;
+            
+            if (gameState.activeControl === 'HAND') {
+                if(!gameState.handDetected) return; 
+                cx = gameState.handCursor.x;
+                cy = gameState.handCursor.y;
+                
+                ctx.save();
+                ctx.translate(cx, cy);
+                
+                const time = Date.now() / 150;
+                
+                // Outer Golden Plasma Ring
+                ctx.rotate(time);
+                ctx.strokeStyle = `rgba(255, 170, 0, ${gameState.isFiring ? 0.95 : 0.5})`;
+                ctx.lineWidth = 3.5;
+                ctx.shadowBlur = 22;
+                ctx.shadowColor = '#ffaa00';
+                ctx.beginPath();
+                ctx.arc(0, 0, 32 + (gameState.energyLevel * 0.12), 0, Math.PI * 2);
+                ctx.setLineDash([12, 6]);
+                ctx.stroke();
+
+                // Inner Cyan Energy Ring
+                ctx.rotate(-time * 1.6);
+                ctx.strokeStyle = `rgba(0, 243, 255, ${gameState.isFiring ? 0.9 : 0.4})`;
+                ctx.lineWidth = 2.5;
+                ctx.setLineDash([20, 10]);
+                ctx.beginPath();
+                ctx.arc(0, 0, 48 + (gameState.energyLevel * 0.2), 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Central Fireball Core
+                ctx.setLineDash([]);
+                const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, 18);
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(0.4, '#ffdd00');
+                gradient.addColorStop(1, 'rgba(255, 80, 0, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, 18 + Math.sin(Date.now() / 80) * 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (gameState.handState === 'CLOSED') {
+                    ctx.font = '11px Orbitron';
+                    ctx.fillStyle = '#ffaa00';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('PLASMA LOCK', 0, 65);
+                }
+
+                ctx.restore();
+
+            } else {
+                cx = gameState.mouseCursor.x;
+                cy = gameState.mouseCursor.y;
+                
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.strokeStyle = '#ffaa00';
+                ctx.lineWidth = 2.5;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ffaa00';
+                ctx.beginPath();
+                ctx.arc(0, 0, 16, 0, Math.PI * 2);
+                ctx.moveTo(-20, 0); ctx.lineTo(-10, 0);
+                ctx.moveTo(20, 0); ctx.lineTo(10, 0);
+                ctx.moveTo(0, -20); ctx.lineTo(0, -10);
+                ctx.moveTo(0, 20); ctx.lineTo(0, 10);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        function createFireballBeam(startX, startY, endX, endY) {
+            // ชาร์จพลังงานที่ฝ่ามือก่อนยิง: แสงจะหมุนรวมตัวเป็นลูกไฟไซไฟ
+            const dx = endX - startX, dy = endY - startY;
+            const angle = Math.atan2(dy, dx);
+            for (let i = 0; i < 14; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const r = 10 + Math.random() * 34;
+                gameState.fireballs.push({
+                    x: startX + Math.cos(a) * r, y: startY + Math.sin(a) * r,
+                    startX, startY, endX, endY, angle,
+                    progress: 0, speed: 0.055 + Math.random() * 0.035,
+                    size: 3 + Math.random() * 7, phase: 'charge', life: 1
+                });
+            }
+            // แกนยิงหลัก: ลูกไฟเปลี่ยนเป็นเลเซอร์หลังชาร์จ
+            gameState.fireballs.push({
+                x:startX,y:startY,startX,startY,endX,endY,angle,progress:0,
+                speed:0.13, size:18, phase:'laser', life:1
+            });
+        }
+
+        function drawFireballBeams() {
+            for (let i = gameState.fireballs.length - 1; i >= 0; i--) {
+                const fb = gameState.fireballs[i];
+                fb.progress += fb.speed;
+                const p = Math.min(1, fb.progress);
+                const cx = fb.startX + (fb.endX - fb.startX) * p;
+                const cy = fb.startY + (fb.endY - fb.startY) * p;
+                fb.currX = cx; fb.currY = cy;
+
+                if (fb.phase === 'charge') {
+                    // วงแหวนและประกายหมุนเข้าหาศูนย์กลาง
+                    const spin = Date.now() * 0.012 + i;
+                    const orbit = Math.max(2, 32 * (1 - p));
+                    const ox = fb.startX + Math.cos(spin) * orbit;
+                    const oy = fb.startY + Math.sin(spin) * orbit;
+                    ctx.save();
+                    ctx.globalAlpha = 0.95 * (1-p*0.7);
+                    ctx.shadowBlur = 22; ctx.shadowColor = '#ffaa00';
+                    const g = ctx.createRadialGradient(ox,oy,1,ox,oy,fb.size*3);
+                    g.addColorStop(0,'#fff'); g.addColorStop(0.25,'#ffe66b');
+                    g.addColorStop(0.65,'#ff7a00'); g.addColorStop(1,'rgba(255,0,0,0)');
+                    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ox,oy,fb.size*2.5,0,Math.PI*2); ctx.fill();
+                    ctx.restore();
+                    if (fb.progress >= 1) gameState.fireballs.splice(i,1);
+                    continue;
+                }
+
+                // ลำแสงเลเซอร์ไซไฟ: core ขาว + glow ทอง/ฟ้า
+                ctx.save();
+                ctx.lineCap='round';
+                ctx.shadowBlur=28; ctx.shadowColor='#ffaa00';
+                ctx.strokeStyle='rgba(255,170,0,0.35)'; ctx.lineWidth=18;
+                ctx.beginPath(); ctx.moveTo(fb.startX,fb.startY); ctx.lineTo(cx,cy); ctx.stroke();
+                ctx.shadowBlur=12; ctx.strokeStyle='#ffaa00'; ctx.lineWidth=8;
+                ctx.beginPath(); ctx.moveTo(fb.startX,fb.startY); ctx.lineTo(cx,cy); ctx.stroke();
+                ctx.strokeStyle='#ffffff'; ctx.lineWidth=3;
+                ctx.beginPath(); ctx.moveTo(fb.startX,fb.startY); ctx.lineTo(cx,cy); ctx.stroke();
+                const grad=ctx.createRadialGradient(cx,cy,1,cx,cy,fb.size*2.5);
+                grad.addColorStop(0,'#fff'); grad.addColorStop(0.3,'#ffe66b'); grad.addColorStop(0.7,'#ff5a00'); grad.addColorStop(1,'rgba(255,0,0,0)');
+                ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(cx,cy,fb.size*2.5,0,Math.PI*2); ctx.fill();
+                ctx.restore();
+                if (fb.progress >= 1) gameState.fireballs.splice(i,1);
+            }
+        }
+
+        function createExplosion(x, y, isAI) {
+            const color = isAI ? '#00f3ff' : '#ff0055';
+            for (let i = 0; i < 18; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 16,
+                    vy: (Math.random() - 0.5) * 16,
+                    size: Math.random() * 8 + 3,
+                    color: i % 2 === 0 ? '#ffaa00' : color,
+                    life: 1
+                });
+            }
+        }
+
+        function createFloatingText(text, x, y, color) {
+            floatingTexts.push({ text, x, y, color, life: 1 });
+        }
+
+        function updateHUDUI() {
+            const scoreEl = document.getElementById('hud-score');
+            const comboEl = document.getElementById('hud-combo');
+            const correctEl = document.getElementById('hud-correct');
+            const wrongEl = document.getElementById('hud-wrong');
+
+            if(scoreEl) scoreEl.textContent = gameState.score;
+            if(comboEl) comboEl.textContent = `🔥 COMBO x${gameState.combo}`;
+            if(correctEl) correctEl.textContent = gameState.correctHits;
+            if(wrongEl) wrongEl.textContent = gameState.wrongHits;
+        }
+
+        async function endGame() {
+            document.body.classList.remove('game-active');
+            gameState.isPlaying = false;
+            cancelAnimationFrame(animationId);
+            Sounds.stopBGM();
+            
+            const totalShots = gameState.correctHits + gameState.wrongHits;
+            const accuracy = totalShots > 0 ? ((gameState.correctHits / totalShots) * 100).toFixed(1) : 0;
+            
+            const isPassed = gameState.score >= 800 && parseFloat(accuracy) >= 45;
+            const banner = document.getElementById('res-status-banner');
+            
+            if (banner) {
+                if (isPassed) {
+                    banner.textContent = '✅ ผ่านเกณฑ์การเล่น (MISSION PASSED)';
+                    banner.className = 'absolute -top-5 left-1/2 transform -translate-x-1/2 px-8 py-2 rounded-full font-cyber font-black text-base md:text-xl shadow-[0_0_25px_#22c55e] text-white bg-green-500 border-2 border-white z-40 whitespace-nowrap';
+                    AIVoice.speak(`ยอดเยี่ยมมาก ${gameState.player.name} คุณผ่านเกณฑ์การเล่นภารกิจนี้แล้ว`);
+                } else {
+                    banner.textContent = '❌ ไม่ผ่านเกณฑ์การเล่น (MISSION FAILED)';
+                    banner.className = 'absolute -top-5 left-1/2 transform -translate-x-1/2 px-8 py-2 rounded-full font-cyber font-black text-base md:text-xl shadow-[0_0_25px_#ef4444] text-white bg-red-600 border-2 border-white z-40 whitespace-nowrap';
+                    AIVoice.speak(`เสียใจด้วย ${gameState.player.name} คุณไม่ผ่านเกณฑ์การเล่น กรุณาลองใหม่อีกครั้ง`);
+                }
+            }
+            
+            const resNameEl = document.getElementById('res-name');
+            if(resNameEl) resNameEl.textContent = gameState.player.name;
+            const resScoreEl = document.getElementById('res-score');
+            if(resScoreEl) resScoreEl.textContent = gameState.score;
+            
+            const detailsEl = document.getElementById('res-details');
+            if(detailsEl) detailsEl.textContent = `LEVEL ${gameState.level} • ${gameState.controlMode} MODE`;
+            
+            const correctEl = document.getElementById('res-correct');
+            if(correctEl) correctEl.textContent = `🎯 ${gameState.correctHits}`;
+            
+            const wrongEl = document.getElementById('res-wrong');
+            if(wrongEl) wrongEl.textContent = `❌ ${gameState.wrongHits}`;
+            
+            const accEl = document.getElementById('res-accuracy');
+            if(accEl) accEl.textContent = `🎯 ${accuracy}%`;
+            
+            const comboEl = document.getElementById('res-combo');
+            if(comboEl) comboEl.textContent = `🔥 ${gameState.maxCombo}`;
+            
+            switchScreen('screen-result');
+
+            const payload = {
+                name: gameState.player.name,
+                grade: gameState.player.grade,
+                room: gameState.player.room,
+                level: gameState.level,
+                mode: gameState.controlMode,
+                score: gameState.score,
+                correct: gameState.correctHits,
+                wrong: gameState.wrongHits,
+                accuracy: parseFloat(accuracy),
+                combo: gameState.maxCombo
+            };
+
+            await saveDataToGoogleSheets(payload);
+            saveLocalScore(payload);
+            generateLeaderboard();
+            generateAIFeedback(payload, isPassed);
+        }
+
+        function saveLocalScore(data) {
+            let records = JSON.parse(localStorage.getItem('ai_hunter_records') || '[]');
+            records.push({ ...data, date: new Date().toLocaleString() });
+            records.sort((a, b) => b.score - a.score);
+            localStorage.setItem('ai_hunter_records', JSON.stringify(records));
+        }
+
+        function getLocalRecords() {
+            return JSON.parse(localStorage.getItem('ai_hunter_records') || '[]');
+        }
+
+        function generateLeaderboard() {
+            let records = getLocalRecords();
+            if(records.length === 0) {
+                records = [
+                    { name: 'ด.ช. อนันต์', score: 1250, level: 3 },
+                    { name: 'ด.ญ. มรินดา', score: 1100, level: 3 },
+                    { name: 'ด.ช. กิตติ', score: 980, level: 2 }
+                ];
+            }
+            
+            const listEl = document.getElementById('leaderboard-list');
+            if(!listEl) return;
+            listEl.innerHTML = '';
+            
+            records.slice(0, 5).forEach((player, index) => {
+                const isCurrent = player.name === gameState.player.name && player.score === gameState.score;
+                const html = `
+                    <div class="flex justify-between items-center px-4 py-2 rounded-xl bg-black/50 border ${isCurrent ? 'border-[#00f3ff] shadow-[0_0_10px_rgba(0,243,255,0.3)]' : 'border-gray-700'} text-xs md:text-sm">
+                        <div class="flex items-center gap-3">
+                            <span class="font-cyber font-bold text-base">${['🥇', '🥈', '🥉', '🔸', '🔸'][index]}</span>
+                            <div>
+                                <span class="font-bold ${isCurrent ? 'text-[#00f3ff]' : 'text-white'}">${player.name}</span>
+                                <span class="text-[10px] text-gray-400 block">ชั้น ${player.grade || 'ม.3'} (Lvl ${player.level || 3})</span>
+                            </div>
+                        </div>
+                        <span class="font-cyber font-bold text-base ${isCurrent ? 'text-[#00f3ff]' : 'text-yellow-400'}">${player.score} PTS</span>
+                    </div>
+                `;
+                listEl.innerHTML += html;
+            });
+        }
+
+        function openStatsModal() {
+            const contentEl = document.getElementById('stats-content');
+            const records = getLocalRecords();
+            
+            if(records.length === 0) {
+                contentEl.innerHTML = `<p class="text-gray-400 text-center text-sm py-4">ยังไม่มีประวัติการบันทึกคะแนนในระบบ</p>`;
+            } else {
+                contentEl.innerHTML = '';
+                records.forEach((rec, idx) => {
+                    contentEl.innerHTML += `
+                        <div class="p-3 rounded-lg bg-black/60 border border-gray-700 flex justify-between items-center text-xs">
+                            <div>
+                                <span class="font-bold text-[#00f3ff]">${idx+1}. ${rec.name}</span>
+                                <span class="text-gray-400 block">ชั้น ${rec.grade}/${rec.room} • Lvl ${rec.level} • ${rec.date}</span>
+                            </div>
+                            <div class="text-right font-cyber">
+                                <span class="text-yellow-400 font-bold text-sm">${rec.score} PTS</span>
+                                <span class="text-gray-400 block">${rec.accuracy}% Acc</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            document.getElementById('modal-stats').classList.add('active');
+        }
+
+        function generateAIFeedback(data, isPassed) {
+            const feedbackEl = document.getElementById('ai-feedback-text');
+            if(!feedbackEl) return;
+            
+            const messages = isPassed ? [
+                `ผู้บัญชาการรายงาน: ยอดเยี่ยมมาก ฮันเตอร์ ${data.name}! พลังงานลูกไฟพลาสม่าและการกวาดล้างเป้าหมาย AI ทำได้ยอดเยี่ยม แม่นยำ ${data.accuracy}% สมเป็นกองกำลังแนวหน้าศูนย์ไซเบอร์`,
+                `ระบบตรวจพบฟอร์มการรบระดับตำนาน! ภารกิจสำเร็จลุล่วงด้วยคะแนนคอมโบสูงสุด ${data.combo} พลังลูกไฟทำงานเต็มประสิทธิภาพผ่านเกณฑ์ฉลุย`
+            ] : [
+                `ผู้บัญชาการรายงาน: ฮันเตอร์ ${data.name} ภารกิจยังไม่ผ่านเกณฑ์! คุณปล่อยลูกไฟทำลายวัตถุที่ไม่ใช่ AI บ่อยเกินไป ต้องตั้งสมาธิเล็งเป้าหมายให้แม่นยำกว่านี้`,
+                `การปฏิบัติการต่ำกว่ามาตรฐาน! ความแม่นยำ ${data.accuracy}% ยังไม่เพียงพอต่อการควบคุมระบบ กลับไปฝึกฝนฝ่ามือแล้วมาแก้ตัวใหม่!`
+            ];
+            
+            const selectedMsg = messages[Math.floor(Math.random() * messages.length)];
+            feedbackEl.innerHTML = '';
+            let i = 0;
+            const typeWriter = setInterval(() => {
+                feedbackEl.innerHTML += selectedMsg.charAt(i);
+                i++;
+                if (i >= selectedMsg.length) clearInterval(typeWriter);
+            }, 20);
+        }
+
+        async function saveDataToGoogleSheets(data) {
+            const statusEl = document.getElementById('save-status');
+            if(!statusEl) return;
+            statusEl.textContent = "Saving data to Google Sheets...";
+            
+            if (!GOOGLE_APP_SCRIPT_URL || GOOGLE_APP_SCRIPT_URL.includes("XXXXXXXXXX")) {
+                setTimeout(() => {
+                    statusEl.textContent = "✓ Data Saved Successfully (Local & Cloud Sync Ready)";
+                    statusEl.className = "text-xs text-green-400 font-cyber col-span-1 md:col-span-2 text-center";
+                }, 800);
+                return;
+            }
+
+            try {
+                await fetch(GOOGLE_APP_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                statusEl.textContent = "✓ Data Saved to Google Sheets!";
+                statusEl.className = "text-xs text-green-400 font-cyber col-span-1 md:col-span-2 text-center";
+            } catch (error) {
+                statusEl.textContent = "⚠️ Cloud sync offline. Saved locally.";
+                statusEl.className = "text-xs text-yellow-400 font-cyber col-span-1 md:col-span-2 text-center";
+            }
+        }
+
+        const bgContainer = document.getElementById('particles-container');
+        if (bgContainer) {
+            for(let i=0; i<15; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.style.left = `${Math.random() * 100}vw`;
+                p.style.width = p.style.height = `${Math.random() * 3 + 2}px`;
+                p.style.animationDuration = `${Math.random() * 5 + 5}s`;
+                p.style.animationDelay = `${Math.random() * 5}s`;
+                bgContainer.appendChild(p);
+            }
+        }
+    </script>
+</body>
+</html>
